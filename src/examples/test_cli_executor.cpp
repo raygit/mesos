@@ -1,7 +1,7 @@
 #include <iostream>
-
 #include <mesos/executor.hpp>
-
+#include <chrono>
+#include <thread>
 #include <stout/duration.hpp>
 #include <stout/os.hpp>
 
@@ -44,6 +44,7 @@ public:
     driver->sendStatusUpdate(status);
 
     // This is where one would perform the requested task.
+    sleepFor(5);
 
     cout << "Finishing task " << task.task_id().value() << endl;
 
@@ -51,6 +52,15 @@ public:
     status.set_state(TASK_FINISHED);
 
     driver->sendStatusUpdate(status);
+  }
+
+  void sleepFor(int time) {
+    auto start = std::chrono::high_resolution_clock::now();
+    std::chrono::seconds sec(time);
+    std::this_thread::sleep_for(sec);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> elapsed = end-start;
+    std::cout << "Waited " << elapsed.count() << " ms\n";
   }
 
   virtual void killTask(ExecutorDriver* driver, const TaskID& taskId) {}
