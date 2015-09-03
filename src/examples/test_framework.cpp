@@ -67,7 +67,7 @@ public:
       role(_role),
       tasksLaunched(0),
       tasksFinished(0),
-      totalTasks(5) {}
+      totalTasks(100) {}
 
   virtual ~TestScheduler() {}
 
