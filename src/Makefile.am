@@ -1444,6 +1444,16 @@ test_framework_SOURCES = examples/test_framework.cpp
 test_framework_CPPFLAGS = $(MESOS_CPPFLAGS)
 test_framework_LDADD = libmesos.la $(LDADD)
 
+check_PROGRAMS += test-cli-framework
+test_cli_framework_SOURCES = examples/test_cli_framework.cpp
+test_cli_framework_CPPFLAGS = $(MESOS_CPPFLAGS)
+test_cli_framework_LDADD = libmesos.la $(LDADD)
+
+check_PROGRAMS += test-cli-executor
+test_cli_executor_SOURCES = examples/test_cli_executor.cpp
+test_cli_executor_CPPFLAGS = $(MESOS_CPPFLAGS)
+test_cli_executor_LDADD = libmesos.la $(LDADD)
+
 check_PROGRAMS += test-executor
 test_executor_SOURCES = examples/test_executor.cpp
 test_executor_CPPFLAGS = $(MESOS_CPPFLAGS)
