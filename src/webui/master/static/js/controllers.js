@@ -117,10 +117,13 @@
     // Update the stats.
     $scope.cluster = $scope.state.cluster;
     $scope.total_cpus = 0;
+    $scope.total_gpus = 0;
     $scope.total_mem = 0;
     $scope.used_cpus = 0;
+    $scope.used_gpus = 0;
     $scope.used_mem = 0;
     $scope.offered_cpus = 0;
+    $scope.offered_gpus = 0;
     $scope.offered_mem = 0;
 
     $scope.staged_tasks = $scope.state.staged_tasks;
@@ -136,6 +139,7 @@
     _.each($scope.state.slaves, function(slave) {
       $scope.slaves[slave.id] = slave;
       $scope.total_cpus += slave.resources.cpus;
+      $scope.total_gpus += slave.resources.gpus;
       $scope.total_mem += slave.resources.mem;
     });
 
@@ -156,12 +160,14 @@
       _.each(framework.offers, function(offer) {
         $scope.offers[offer.id] = offer;
         $scope.offered_cpus += offer.resources.cpus;
+        $scope.offered_gpus += offer.resources.gpus;
         $scope.offered_mem += offer.resources.mem;
         offer.framework_name = $scope.frameworks[offer.framework_id].name;
         offer.hostname = $scope.slaves[offer.slave_id].hostname;
       });
 
       $scope.used_cpus += framework.resources.cpus;
+      $scope.used_gpus += framework.resources.gpus;
       $scope.used_mem += framework.resources.mem;
 
       framework.cpus_share = 0;
@@ -173,6 +179,12 @@
       if ($scope.total_mem > 0) {
         framework.mem_share = framework.resources.mem / $scope.total_mem;
       }
+
+      framework.gpus_share = 0;
+      if ($scope.total_gpus > 0) {
+        framework.gpus_share = framework.resources.gpus / $scope.total_gpus;
+      }
+
 
       framework.max_share = Math.max(framework.cpus_share, framework.mem_share);
 
@@ -195,9 +207,11 @@
     });
 
     $scope.used_cpus -= $scope.offered_cpus;
+    $scope.used_gpus -= $scope.offered_gpus;
     $scope.used_mem -= $scope.offered_mem;
 
     $scope.idle_cpus = $scope.total_cpus - ($scope.offered_cpus + $scope.used_cpus);
+    $scope.idle_gpus = $scope.total_gpus - ($scope.offered_gpus + $scope.used_gpus);
     $scope.idle_mem = $scope.total_mem - ($scope.offered_mem + $scope.used_mem);
 
     $scope.time_since_update = 0;
@@ -438,11 +452,13 @@
           function computeFrameworkStats(framework) {
             framework.num_tasks = 0;
             framework.cpus = 0;
+            framework.gpus = 0;
             framework.mem = 0;
 
             _.each(framework.executors, function(executor) {
               framework.num_tasks += _.size(executor.tasks);
               framework.cpus += executor.resources.cpus;
+              framework.gpus += executor.resources.gpus;
               framework.mem += executor.resources.mem;
             });
           }
@@ -523,11 +539,13 @@
           // Compute the framework stats.
           $scope.framework.num_tasks = 0;
           $scope.framework.cpus = 0;
+          $scope.framework.gpus = 0;
           $scope.framework.mem = 0;
 
           _.each($scope.framework.executors, function(executor) {
             $scope.framework.num_tasks += _.size(executor.tasks);
             $scope.framework.cpus += executor.resources.cpus;
+            $scope.framework.gpus += executor.resources.gpus;
             $scope.framework.mem += executor.resources.mem;
           });
 

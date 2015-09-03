@@ -66,6 +66,7 @@ string serialize(
 JSON::Object model(const Resources& resources)
 {
   JSON::Object object;
+  object.values["gpus"] = 0;
   object.values["cpus"] = 0;
   object.values["mem"] = 0;
   object.values["disk"] = 0;

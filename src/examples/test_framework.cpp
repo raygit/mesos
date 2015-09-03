@@ -36,6 +36,7 @@
 
 #include "logging/flags.hpp"
 #include "logging/logging.hpp"
+#include "examples/utils.hpp"
 
 using namespace mesos;
 
@@ -51,6 +52,7 @@ using std::vector;
 using mesos::Resources;
 
 const int32_t CPUS_PER_TASK = 1;
+const int32_t GPUS_PER_TASK = 1;
 const int32_t MEM_PER_TASK = 128;
 
 class TestScheduler : public Scheduler
@@ -89,18 +91,18 @@ public:
 
       static const Resources TASK_RESOURCES = Resources::parse(
           "cpus:" + stringify(CPUS_PER_TASK) +
-          ";mem:" + stringify(MEM_PER_TASK)).get();
+          ";mem:" + stringify(MEM_PER_TASK)  +
+          ";gpus:" + stringify(1)).get();
 
-      Resources remaining = offer.resources();
+      long gpus = getScalarResource(offer, "gpus");
 
-      // Launch tasks.
       vector<TaskInfo> tasks;
-      while (tasksLaunched < totalTasks &&
-             remaining.flatten().contains(TASK_RESOURCES)) {
+
+      if (gpus >= GPUS_PER_TASK) {
         int taskId = tasksLaunched++;
 
         cout << "Launching task " << taskId << " using offer "
-             << offer.id() << endl;
+             << offer.id() << " on host: " << offer.hostname() << endl;
 
         TaskInfo task;
         task.set_name("Task " + lexical_cast<string>(taskId));
@@ -108,15 +110,14 @@ public:
         task.mutable_slave_id()->MergeFrom(offer.slave_id());
         task.mutable_executor()->MergeFrom(executor);
 
-        Option<Resources> resources =
-          remaining.find(TASK_RESOURCES.flatten(role));
-
-        CHECK_SOME(resources);
-        task.mutable_resources()->MergeFrom(resources.get());
-        remaining -= resources.get();
+        Resource* resource;
+        resource = task.add_resources();
+        resource->set_name("gpus");
+        resource->set_type(Value::SCALAR);
+        resource->mutable_scalar()->set_value(GPUS_PER_TASK);
 
         tasks.push_back(task);
-      }
+      } else cout << "No gpu resource available, let's wait and try again .. " << endl;
 
       driver->launchTasks(offer.id(), tasks);
     }

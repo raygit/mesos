@@ -867,6 +867,7 @@ Try<Resources> Resources::apply(const Offer::Operation& operation) const
   // TODO(jieyu): Currently, we only check known resource types like
   // cpus, mem, disk, ports, etc. We should generalize this.
   CHECK(result.cpus() == cpus() &&
+        result.gpus() == gpus() &&
         result.mem() == mem() &&
         result.disk() == disk() &&
         result.ports() == ports());
@@ -988,6 +989,17 @@ Option<double> Resources::cpus() const
     return None();
   }
 }
+
+Option<double> Resources::gpus() const
+{
+  Option<Value::Scalar> value = get<Value::Scalar>("gpus");
+  if (value.isSome()) {
+    return value.get().value();
+  } else {
+    return None();
+  }
+}
+
 
 
 Option<Bytes> Resources::mem() const

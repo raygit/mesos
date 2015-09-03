@@ -44,6 +44,7 @@
 #include "slave/containerizer/external_containerizer.hpp"
 
 #include "slave/containerizer/mesos/containerizer.hpp"
+#include "logging/logging.hpp"
 
 using std::map;
 using std::string;
@@ -156,6 +157,16 @@ Try<Resources> Containerizer::resources(const Flags& flags)
         flags.default_role).get();
   }
 
+  // GPU resource.
+  if (!strings::contains(flags.resources.getOrElse(""), "gpus")) {
+    double gpus = 1; // assume single-gpu
+    resources += Resources::parse(
+        "gpus",
+        stringify(gpus),
+        flags.default_role).get();
+  }
+
+  LOG(INFO) << "Parse all resources without issues";
   return resources;
 }
 
