@@ -815,6 +815,30 @@ void Master::initialize()
           Http::log(request);
           return http.tasks(request);
         });
+  route("/maintenance/schedule",
+        Http::MAINTENANCE_SCHEDULE_HELP,
+        [http](const process::http::Request& request) {
+          Http::log(request);
+          return http.maintenanceSchedule(request);
+        });
+  route("/maintenance/status",
+        Http::MAINTENANCE_STATUS_HELP,
+        [http](const process::http::Request& request) {
+          Http::log(request);
+          return http.maintenanceStatus(request);
+        });
+  route("/machine/down",
+        Http::MACHINE_DOWN_HELP,
+        [http](const process::http::Request& request) {
+          Http::log(request);
+          return http.machineDown(request);
+        });
+  route("/machine/up",
+        Http::MACHINE_UP_HELP,
+        [http](const process::http::Request& request) {
+          Http::log(request);
+          return http.machineUp(request);
+        });
 
   // Provide HTTP assets from a "webui" directory. This is either
   // specified via flags (which is necessary for running out of the
@@ -1330,6 +1354,16 @@ Future<Nothing> Master::_recover(const Registry& registry)
           self(),
           &Self::recoveredSlavesTimeout,
           registry);
+
+  // Save the maintenance schedule.
+  foreach (const mesos::maintenance::Schedule& schedule, registry.schedules()) {
+    maintenance.schedules.push_back(schedule);
+  }
+
+  // Save the machine info for each machine.
+  foreach (const Registry::Machine& machine, registry.machines().machines()) {
+    machineInfos[machine.info().id()] = machine.info();
+  }
 
   // Recovery is now complete!
   LOG(INFO) << "Recovered " << registry.slaves().slaves().size() << " slaves"
@@ -3998,7 +4032,7 @@ void Master::updateSlave(
   LOG(INFO) << "Received update of slave " << *slave << " with total"
             << " oversubscribed resources " <<  oversubscribedResources;
 
-  // First, rescind any oustanding offers with revocable resources.
+  // First, rescind any outstanding offers with revocable resources.
   // NOTE: Need a copy of offers because the offers are removed inside
   // the loop.
   foreach (Offer* offer, utils::copy(slave->offers)) {

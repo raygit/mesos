@@ -153,6 +153,9 @@ EXECUTOR_PROTO =							\
 FETCHER_PROTO =								\
   $(top_srcdir)/include/mesos/fetcher/fetcher.proto
 
+MAINTENANCE_PROTO =							\
+  $(top_srcdir)/include/mesos/maintenance/maintenance.proto
+
 ALLOCATOR_PROTO =							\
   $(top_srcdir)/include/mesos/master/allocator.proto
 
@@ -184,6 +187,8 @@ CXX_PROTOS =								\
   ../include/mesos/executor/executor.pb.h				\
   fetcher/fetcher.pb.cc							\
   ../include/mesos/fetcher/fetcher.pb.h					\
+  maintenance/maintenance.pb.cc						\
+  ../include/mesos/maintenance/maintenance.pb.h				\
   master/allocator.pb.cc						\
   ../include/mesos/master/allocator.pb.h				\
   module/module.pb.cc							\
@@ -277,6 +282,12 @@ fetcher/%.pb.cc ../include/mesos/fetcher/%.pb.h: $(FETCHER_PROTO)
 	$(MKDIR_P) ../include/mesos/fetcher
 	$(PROTOC) $(PROTOCFLAGS) --cpp_out=../include $^
 	mv ../include/mesos/fetcher/*.pb.cc $(@D)
+
+maintenance/%.pb.cc ../include/mesos/maintenance/%.pb.h: $(MAINTENANCE_PROTO)
+	$(MKDIR_P) $(@D)
+	$(MKDIR_P) ../include/mesos/maintenance
+	$(PROTOC) $(PROTOCFLAGS) --cpp_out=../include $^
+	mv ../include/mesos/maintenance/*.pb.cc $(@D)
 
 master/%.pb.cc ../include/mesos/master/%.pb.h: $(ALLOCATOR_PROTO)
 	$(MKDIR_P) $(@D)
@@ -428,6 +439,7 @@ libmesos_no_3rdparty_la_SOURCES =					\
 	master/detector.cpp						\
 	master/flags.cpp						\
 	master/http.cpp							\
+	master/maintenance.cpp						\
 	master/master.cpp						\
 	master/metrics.cpp						\
 	master/registry.hpp						\
@@ -474,6 +486,7 @@ libmesos_no_3rdparty_la_SOURCES =					\
 	slave/containerizer/provisioners/appc/spec.cpp			\
 	slave/containerizer/provisioners/appc/store.cpp			\
 	slave/containerizer/provisioners/backend.cpp			\
+        slave/containerizer/provisioners/backends/copy.cpp              \
 	slave/resource_estimators/noop.cpp				\
 	usage/usage.cpp							\
 	v1/attributes.cpp						\
@@ -537,6 +550,14 @@ fetcher_HEADERS =							\
   $(top_srcdir)/include/mesos/fetcher/fetcher.proto
 
 nodist_fetcher_HEADERS = ../include/mesos/fetcher/fetcher.pb.h
+
+maintenancedir = $(pkgincludedir)/maintenance
+
+maintenance_HEADERS =							\
+  $(top_srcdir)/include/mesos/maintenance/maintenance.hpp		\
+  $(top_srcdir)/include/mesos/maintenance/maintenance.proto
+
+nodist_maintenance_HEADERS = ../include/mesos/maintenance/maintenance.pb.h
 
 masterdir = $(pkgincludedir)/master
 
@@ -708,6 +729,7 @@ libmesos_no_3rdparty_la_SOURCES +=					\
 	master/constants.hpp						\
 	master/detector.hpp						\
 	master/flags.hpp						\
+	master/maintenance.hpp						\
 	master/master.hpp						\
 	master/metrics.hpp						\
 	master/repairer.hpp						\
@@ -743,6 +765,7 @@ libmesos_no_3rdparty_la_SOURCES +=					\
 	slave/containerizer/provisioners/appc/store.hpp			\
 	slave/containerizer/provisioners/backend.hpp			\
 	slave/containerizer/provisioners/backends/bind.hpp		\
+	slave/containerizer/provisioners/backends/copy.hpp		\
 	slave/containerizer/isolators/posix.hpp				\
 	slave/containerizer/isolators/posix/disk.hpp			\
 	slave/containerizer/isolators/cgroups/constants.hpp		\
@@ -896,6 +919,7 @@ libmesos_la_SOURCES =							\
   $(ALLOCATOR_PROTO)							\
   $(CONTAINERIZER_PROTO)						\
   $(FETCHER_PROTO)							\
+  $(MAINTENANCE_PROTO)							\
   $(MESOS_PROTO)							\
   $(MODULE_PROTO)							\
   $(SCHEDULER_PROTO)							\
@@ -1627,6 +1651,7 @@ mesos_tests_SOURCES =						\
   tests/master_allocator_tests.cpp				\
   tests/master_authorization_tests.cpp				\
   tests/master_contender_detector_tests.cpp			\
+  tests/master_maintenance_tests.cpp				\
   tests/master_slave_reconciliation_tests.cpp			\
   tests/master_tests.cpp					\
   tests/master_validation_tests.cpp				\

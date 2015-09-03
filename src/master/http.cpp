@@ -30,19 +30,28 @@
 
 #include <mesos/authorizer/authorizer.hpp>
 
+#include <mesos/maintenance/maintenance.hpp>
+
+#include <process/defer.hpp>
 #include <process/help.hpp>
 
 #include <process/metrics/metrics.hpp>
 
 #include <stout/base64.hpp>
 #include <stout/foreach.hpp>
+#include <stout/hashmap.hpp>
+#include <stout/hashset.hpp>
 #include <stout/json.hpp>
 #include <stout/lambda.hpp>
 #include <stout/net.hpp>
+#include <stout/nothing.hpp>
 #include <stout/numify.hpp>
 #include <stout/os.hpp>
+#include <stout/protobuf.hpp>
 #include <stout/result.hpp>
 #include <stout/strings.hpp>
+#include <stout/try.hpp>
+#include <stout/utils.hpp>
 
 #include "common/attributes.hpp"
 #include "common/build.hpp"
@@ -53,6 +62,7 @@
 
 #include "logging/logging.hpp"
 
+#include "master/maintenance.hpp"
 #include "master/master.hpp"
 #include "master/validation.hpp"
 
@@ -83,6 +93,7 @@ using process::http::UnsupportedMediaType;
 
 using process::metrics::internal::MetricsProcess;
 
+using std::list;
 using std::map;
 using std::string;
 using std::vector;
@@ -98,6 +109,7 @@ using mesos::internal::model;
 // Pull in definitions from process.
 using process::http::Response;
 using process::http::Request;
+using process::Owned;
 
 
 // TODO(bmahler): Kill these in favor of automatic Proto->JSON Conversion (when
@@ -1346,6 +1358,337 @@ Future<Response> Master::Http::tasks(const Request& request) const
   }
 
   return OK(object, request.query.get("jsonp"));
+}
+
+
+// /master/maintenance/schedule endpoint help.
+const string Master::Http::MAINTENANCE_SCHEDULE_HELP = HELP(
+    TLDR(
+        "Returns or updates the cluster's maintenance schedule."),
+    USAGE(
+        "/master/maintenance/schedule"),
+    DESCRIPTION(
+        "GET: Returns the current maintenance schedule as JSON.",
+        "POST: Validates the request body as JSON",
+        "  and updates the maintenance schedule."));
+
+
+// /master/maintenance/schedule endpoint handler.
+Future<Response> Master::Http::maintenanceSchedule(const Request& request) const
+{
+  if (request.method != "GET" && request.method != "POST") {
+    return BadRequest("Expecting GET or POST, got '" + request.method + "'");
+  }
+
+  // JSON-ify and return the current maintenance schedule.
+  if (request.method == "GET") {
+    // TODO(josephw): Return more than one schedule.
+    const mesos::maintenance::Schedule schedule =
+      master->maintenance.schedules.empty() ?
+        mesos::maintenance::Schedule() :
+        master->maintenance.schedules.front();
+
+    return OK(JSON::Protobuf(schedule), request.query.get("jsonp"));
+  }
+
+  // Parse the POST body as JSON.
+  Try<JSON::Object> jsonSchedule = JSON::parse<JSON::Object>(request.body);
+  if (jsonSchedule.isError()) {
+    return BadRequest(jsonSchedule.error());
+  }
+
+  // Convert the schedule to a protobuf.
+  Try<mesos::maintenance::Schedule> protoSchedule =
+    ::protobuf::parse<mesos::maintenance::Schedule>(jsonSchedule.get());
+
+  if (protoSchedule.isError()) {
+    return BadRequest(protoSchedule.error());
+  }
+
+  // Validate that the schedule only transitions machines between
+  // `UP` and `DRAINING` modes.
+  mesos::maintenance::Schedule schedule = protoSchedule.get();
+  Try<Nothing> isValid = maintenance::validation::schedule(
+      schedule,
+      master->machineInfos);
+
+  if (isValid.isError()) {
+    return BadRequest(isValid.error());
+  }
+
+  return master->registrar->apply(Owned<Operation>(
+      new maintenance::UpdateSchedule(schedule)))
+    .then(defer(master->self(), [=](bool result) -> Future<Response> {
+      // See the top comment in "master/maintenance.hpp" for why this check
+      // is here, and is appropriate.
+      CHECK(result);
+
+      // Update the master's local state with the new schedule.
+      // NOTE: We only add or remove differences between the current schedule
+      // and the new schedule.  This is because the `MachineInfo` struct
+      // holds more information than a maintenance schedule.
+      // For example, the `mode` field is not part of a maintenance schedule.
+
+      // TODO(josephw): allow more than one schedule.
+
+      // Put the machines in the updated schedule into a set.
+      // Save the unavailability, to help with updating some machines.
+      hashmap<MachineID, Unavailability> updated;
+      foreach (const mesos::maintenance::Window& window, schedule.windows()) {
+        foreach (const MachineID& id, window.machine_ids()) {
+          updated[id] = window.unavailability();
+        }
+      }
+
+      // NOTE: Copies are needed because this loop modifies the container.
+      foreachkey (const MachineID& id, utils::copy(master->machineInfos)) {
+        // Update the entry for each updated machine.
+        if (updated.contains(id)) {
+          master->machineInfos[id]
+            .mutable_unavailability()->CopyFrom(updated[id]);
+
+          continue;
+        }
+
+        // Delete the entry for each removed machine.
+        master->machineInfos.erase(id);
+      }
+
+      // Save each new machine, with the unavailability
+      // and starting in `DRAINING` mode.
+      foreach (const mesos::maintenance::Window& window, schedule.windows()) {
+        foreach (const MachineID& id, window.machine_ids()) {
+          MachineInfo info;
+          info.mutable_id()->CopyFrom(id);
+          info.set_mode(MachineInfo::DRAINING);
+          info.mutable_unavailability()->CopyFrom(window.unavailability());
+
+          master->machineInfos[id] = info;
+        }
+      }
+
+      // Replace the old schedule(s) with the new schedule.
+      master->maintenance.schedules.clear();
+      master->maintenance.schedules.push_back(schedule);
+
+      return OK();
+    }));
+}
+
+
+// /master/machine/down endpoint help.
+const string Master::Http::MACHINE_DOWN_HELP = HELP(
+    TLDR(
+        "Brings a set of machines down."),
+    USAGE(
+        "/master/machine/down"),
+    DESCRIPTION(
+        "POST: Validates the request body as JSON and transitions",
+        "  the list of machines into DOWN mode.  Currently, only",
+        "  machines in DRAINING mode are allowed to be brought down."));
+
+
+// /master/machine/down endpoint handler.
+Future<Response> Master::Http::machineDown(const Request& request) const
+{
+  if (request.method != "POST") {
+    return BadRequest("Expecting POST, got '" + request.method + "'");
+  }
+
+  // Parse the POST body as JSON.
+  Try<JSON::Object> jsonIds = JSON::parse<JSON::Object>(request.body);
+  if (jsonIds.isError()) {
+    return BadRequest(jsonIds.error());
+  }
+
+  // Convert the machines to a protobuf.
+  Try<MachineIDs> protoIds =
+    ::protobuf::parse<MachineIDs>(jsonIds.get());
+
+  if (protoIds.isError()) {
+    return BadRequest(protoIds.error());
+  }
+
+  // Validate every machine in the list.
+  MachineIDs ids = protoIds.get();
+  Try<Nothing> isValid = maintenance::validation::machines(ids);
+  if (isValid.isError()) {
+    return BadRequest(isValid.error());
+  }
+
+  // Check that all machines are part of a maintenance schedule.
+  // TODO(josephw): Allow a transition from `UP` to `DOWN`.
+  foreach (const MachineID& id, ids.values()) {
+    if (!master->machineInfos.contains(id)) {
+      return BadRequest(
+          "Machine '" + id.DebugString() +
+            "' is not part of a maintenance schedule");
+    }
+
+    if (master->machineInfos[id].mode() != MachineInfo::DRAINING) {
+      return BadRequest(
+          "Machine '" + id.DebugString() +
+            "' is not in DRAINING mode and cannot be brought down");
+    }
+  }
+
+  return master->registrar->apply(Owned<Operation>(
+      new maintenance::StartMaintenance(ids)))
+    .then(defer(master->self(), [=](bool result) -> Future<Response> {
+      // See the top comment in "master/maintenance.hpp" for why this check
+      // is here, and is appropriate.
+      CHECK(result);
+
+      // Update the master's local state with the downed machines.
+      foreach (const MachineID& id, ids.values()) {
+        master->machineInfos[id].set_mode(MachineInfo::DOWN);
+      }
+
+      return OK();
+    }));
+}
+
+
+// /master/maintenance/start endpoint help.
+const string Master::Http::MACHINE_UP_HELP = HELP(
+    TLDR(
+        "Brings a set of machines back up."),
+    USAGE(
+        "/master/machine/up"),
+    DESCRIPTION(
+        "POST: Validates the request body as JSON and transitions",
+        "  the list of machines into UP mode.  This also removes",
+        "  the list of machines from the maintenance schedule."));
+
+
+// /master/machine/up endpoint handler.
+Future<Response> Master::Http::machineUp(const Request& request) const
+{
+  if (request.method != "POST") {
+    return BadRequest("Expecting POST, got '" + request.method + "'");
+  }
+
+  // Parse the POST body as JSON.
+  Try<JSON::Object> jsonIds = JSON::parse<JSON::Object>(request.body);
+  if (jsonIds.isError()) {
+    return BadRequest(jsonIds.error());
+  }
+
+  // Convert the machines to a protobuf.
+  Try<MachineIDs> protoIds =
+    ::protobuf::parse<MachineIDs>(jsonIds.get());
+
+  if (protoIds.isError()) {
+    return BadRequest(protoIds.error());
+  }
+
+  // Validate every machine in the list.
+  MachineIDs ids = protoIds.get();
+  Try<Nothing> isValid = maintenance::validation::machines(ids);
+  if (isValid.isError()) {
+    return BadRequest(isValid.error());
+  }
+
+  // Check that all machines are part of a maintenance schedule.
+  foreach (const MachineID& id, ids.values()) {
+    if (!master->machineInfos.contains(id)) {
+      return BadRequest(
+          "Machine '" + id.DebugString() +
+            "' is not part of a maintenance schedule");
+    }
+
+    if (master->machineInfos[id].mode() != MachineInfo::DOWN) {
+      return BadRequest(
+          "Machine '" + id.DebugString() +
+            "' is not in DOWN mode and cannot be brought up");
+    }
+  }
+
+  return master->registrar->apply(Owned<Operation>(
+      new maintenance::StopMaintenance(ids)))
+    .then(defer(master->self(), [=](bool result) -> Future<Response> {
+      // See the top comment in "master/maintenance.hpp" for why this check
+      // is here, and is appropriate.
+      CHECK(result);
+
+      // Update the master's local state with the reactivated machines.
+      hashset<MachineID> updated;
+      foreach (const MachineID& id, ids.values()) {
+        master->machineInfos.erase(id);
+        updated.insert(id);
+      }
+
+      // Delete the machines from the schedule.
+      for (list<mesos::maintenance::Schedule>::iterator schedule =
+          master->maintenance.schedules.begin();
+          schedule != master->maintenance.schedules.end();) {
+        for (int j = schedule->windows().size() - 1; j >= 0; j--) {
+          mesos::maintenance::Window* window = schedule->mutable_windows(j);
+
+          // Delete individual machines.
+          for (int k = window->machine_ids().size() - 1; k >= 0; k--) {
+            if (updated.contains(window->machine_ids(k))) {
+              window->mutable_machine_ids()->DeleteSubrange(k, 1);
+            }
+          }
+
+          // If the resulting window is empty, delete it.
+          if (window->machine_ids().size() == 0) {
+            schedule->mutable_windows()->DeleteSubrange(j, 1);
+          }
+        }
+
+        // If the resulting schedule is empty, delete it.
+        if (schedule->windows().size() == 0) {
+          schedule = master->maintenance.schedules.erase(schedule);
+        } else {
+          ++schedule;
+        }
+      }
+
+      return OK();
+    }));
+}
+
+
+// /master/maintenance/status endpoint help.
+const string Master::Http::MAINTENANCE_STATUS_HELP = HELP(
+    TLDR(
+        "Retrieves the maintenance status of the cluster."),
+    USAGE(
+        "/master/maintenance/status"),
+    DESCRIPTION(
+        "Returns an object with one list of machines per machine mode."));
+
+
+// /master/maintenance/status endpoint handler.
+Future<Response> Master::Http::maintenanceStatus(const Request& request) const
+{
+  if (request.method != "GET") {
+    return BadRequest("Expecting GET, got '" + request.method + "'");
+  }
+
+  // Unwrap the master's machine information into two arrays of machines.
+  mesos::maintenance::ClusterStatus status;
+  foreachkey (const MachineID& id, master->machineInfos) {
+    switch (master->machineInfos[id].mode()) {
+      case MachineInfo::DRAINING: {
+        status.add_draining_machines()->CopyFrom(id);
+        break;
+      }
+      case MachineInfo::DOWN: {
+        status.add_down_machines()->CopyFrom(id);
+        break;
+      }
+      // Currently, `UP` machines are not specifically tracked in the master.
+      case MachineInfo::UP: {}
+      default: {
+        break;
+      }
+    }
+  }
+
+  return OK(JSON::Protobuf(status), request.query.get("jsonp"));
 }
 
 
