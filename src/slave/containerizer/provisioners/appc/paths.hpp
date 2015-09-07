@@ -16,13 +16,15 @@
  * limitations under the License.
  */
 
-#ifndef __MESOS_APPC_PATHS__
-#define __MESOS_APPC_PATHS__
+#ifndef __MESOS_APPC_PATHS_HPP__
+#define __MESOS_APPC_PATHS_HPP__
 
-#include <list>
 #include <string>
 
 #include <mesos/mesos.hpp>
+
+#include <stout/hashmap.hpp>
+#include <stout/try.hpp>
 
 namespace mesos {
 namespace internal {
@@ -55,14 +57,14 @@ namespace paths {
 //                 |-- backends
 //                     |-- <backend> (copy, bind, etc.)
 //                         |-- rootfses
-//                             |-- <image_id> (the rootfs)
+//                             |-- <rootfs_id> (the rootfs)
 //
 // NOTE: Each container could have multiple image types, therefore there
 // can be the same <container_id> directory under other provisioners e.g.,
 // <work_dir>/provisioners/DOCKER, etc. Under each provisioner + container
 // there can be multiple backends due to the change of backend flags. For
-// appc, under each backend a rootfs is identified by the 'image_id' of
-// the topmost filesystem layer.
+// appc, under each backend a rootfs is identified by the 'rootfs_id' which
+// is a UUID.
 
 std::string getStagingDir(const std::string& storeDir);
 
@@ -92,11 +94,22 @@ std::string getImageManifestPath(const std::string& imagePath);
 
 
 std::string getContainerRootfsDir(
-    const std::string& rootDir,
-    const Image::Type& imageType,
+    const std::string& provisionerDir,
     const ContainerID& containerId,
     const std::string& backend,
-    const std::string& imageId);
+    const std::string& rootfsId);
+
+
+// Recursively "ls" the container directory and return a map of
+// backend -> rootfsId -> rootfsPath.
+Try<hashmap<std::string, hashmap<std::string, std::string>>>
+listContainerRootfses(
+    const std::string& provisionerDir,
+    const ContainerID& containerId);
+
+// Return a map of containerId -> containerPath;
+Try<hashmap<ContainerID, std::string>> listContainers(
+    const std::string& provisionerDir);
 
 } // namespace paths {
 } // namespace appc {
