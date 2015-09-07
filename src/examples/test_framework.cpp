@@ -129,8 +129,9 @@ public:
         mem_resource->mutable_scalar()->set_value(MEM_PER_TASK);
 
         tasks.push_back(task);
-      } else
+      } else {
         cout << "No gpu resource available, let's wait and try again .. " << endl;
+      }
 
       driver->launchTasks(offer.id(), tasks);
     }
