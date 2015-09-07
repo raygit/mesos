@@ -110,11 +110,23 @@ public:
         task.mutable_slave_id()->MergeFrom(offer.slave_id());
         task.mutable_executor()->MergeFrom(executor);
 
-        Resource* resource;
-        resource = task.add_resources();
-        resource->set_name("gpus");
-        resource->set_type(Value::SCALAR);
-        resource->mutable_scalar()->set_value(GPUS_PER_TASK);
+        Resource* gpu_resource;
+        gpu_resource = task.add_resources();
+        gpu_resource->set_name("gpus");
+        gpu_resource->set_type(Value::SCALAR);
+        gpu_resource->mutable_scalar()->set_value(GPUS_PER_TASK);
+
+        Resource* cpu_resource;
+        cpu_resource = task.add_resources();
+        cpu_resource->set_name("cpus");
+        cpu_resource->set_type(Value::SCALAR);
+        cpu_resource->mutable_scalar()->set_value(CPUS_PER_TASK);
+
+        Resource* mem_resource;
+        mem_resource = task.add_resources();
+        mem_resource->set_name("mem");
+        mem_resource->set_type(Value::SCALAR);
+        mem_resource->mutable_scalar()->set_value(MEM_PER_TASK);
 
         tasks.push_back(task);
       } else
