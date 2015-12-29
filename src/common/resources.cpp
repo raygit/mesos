@@ -1072,16 +1072,6 @@ map<string, Value_Type> Resources::types() const
   return result;
 }
 
-Option<double> Resources::gpus() const
-{
-  Option<Value::Scalar> value = get<Value::Scalar>("gpus");
-  if (value.isSome()) {
-    return value.get().value();
-  } else {
-    return None();
-  }
-}
-
 Option<double> Resources::cpus() const
 {
   Option<Value::Scalar> value = get<Value::Scalar>("cpus");
