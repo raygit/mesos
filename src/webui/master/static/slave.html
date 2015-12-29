@@ -94,6 +94,11 @@
             <td class="text-right">{{state.resources.gpus | number}}</td>
           </tr>
           <tr>
+            <td>GPUs</td>
+            <td class="text-right">{{monitor.statistics.gpus_total_usage | number}}</td>
+            <td class="text-right">{{state.resources.gpus | number}}</td>
+          </tr>
+          <tr>
             <td>Memory</td>
             <td class="text-right">{{monitor.statistics.mem_rss_bytes | dataSize}}</td>
             <td class="text-right">

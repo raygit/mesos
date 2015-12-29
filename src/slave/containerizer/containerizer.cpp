@@ -43,6 +43,7 @@
 #ifdef __linux__
 #include "slave/containerizer/mesos/linux_launcher.hpp"
 #endif // __linux__
+#include "logging/logging.hpp"
 
 using std::map;
 using std::string;

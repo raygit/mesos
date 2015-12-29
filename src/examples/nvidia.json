@@ -1,0 +1,12 @@
+{
+   "libraries": [
+     {
+       "file": "/home/tayboonl/apache-mesos/src/examples/libnvidia_gpgpu.so",
+       "modules": [
+         {
+           "name": "org_apache_mesos_TestGpuIsolator"
+         }
+       ]
+     }
+   ]
+ }

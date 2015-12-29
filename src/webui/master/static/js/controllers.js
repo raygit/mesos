@@ -178,6 +178,12 @@
         framework.mem_share = framework.resources.mem / $scope.total_mem;
       }
 
+      framework.gpus_share = 0;
+      if ($scope.total_gpus > 0) {
+        framework.gpus_share = framework.resources.gpus / $scope.total_gpus;
+      }
+
+
       framework.max_share = Math.max(framework.cpus_share, framework.mem_share);
 
       // If the executor ID is empty, this is a command executor with an

@@ -1092,6 +1092,17 @@ Option<double> Resources::cpus() const
   }
 }
 
+Option<double> Resources::gpus() const
+{
+  Option<Value::Scalar> value = get<Value::Scalar>("gpus");
+  if (value.isSome()) {
+    return value.get().value();
+  } else {
+    return None();
+  }
+}
+
+
 
 Option<Bytes> Resources::mem() const
 {

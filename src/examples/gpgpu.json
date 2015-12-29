@@ -1,0 +1,24 @@
+{
+   "libraries": [
+     {
+       "file": "/Users/raymondtay/apache-mesos/src/examples/libgpgpu_module.so",
+       "modules": [
+         {
+
+           "name": "org_apache_mesos_GpGpuModule",
+           "flags" : [
+            {
+              "key" : "operation",
+              "value" : "sum"
+            }],
+           "parameters": [
+             {
+               "key": "X",
+               "value": "Y"
+             }
+           ]
+         }
+       ]
+     }
+   ]
+ }
