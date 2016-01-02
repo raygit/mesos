@@ -31,6 +31,7 @@
 
 #include "slave/flags.hpp"
 #include "slave/slave.hpp"
+#include "logging/logging.hpp"
 
 #include "slave/containerizer/composing.hpp"
 #include "slave/containerizer/containerizer.hpp"
@@ -42,6 +43,7 @@
 #ifdef __linux__
 #include "slave/containerizer/mesos/linux_launcher.hpp"
 #endif // __linux__
+#include "logging/logging.hpp"
 
 using std::map;
 using std::string;
@@ -154,6 +156,15 @@ Try<Resources> Containerizer::resources(const Flags& flags)
         flags.default_role).get();
   }
 
+  // GPU resource.
+  if (!strings::contains(flags.resources.getOrElse(""), "gpus")) {
+    double gpus = 1; // assume single-gpu
+    resources += Resources::parse(
+        "gpus",
+        stringify(gpus),
+        flags.default_role).get();
+  }
+  LOG(INFO) << "Parse all resources without issues";
   return resources;
 }
 

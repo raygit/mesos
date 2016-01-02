@@ -1,18 +1,3 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
 
 #include <iostream>
 #include <string>
@@ -34,7 +19,6 @@
 
 #include "logging/flags.hpp"
 #include "logging/logging.hpp"
-#include "examples/utils.hpp"
 
 using namespace mesos;
 
@@ -49,14 +33,13 @@ using std::vector;
 
 using mesos::Resources;
 
-const int32_t CPUS_PER_TASK = 1;
-const int32_t GPUS_PER_TASK = 1;
-const int32_t MEM_PER_TASK = 128;
+const int32_t CPUS_PER_TASK = 1; // 1 CPU per commandline-interface program
+const int32_t MEM_PER_TASK = 128; // 128 mb RAM per commandline-interface program
 
-class TestScheduler : public Scheduler
+class CliScheduler : public Scheduler
 {
 public:
-  TestScheduler(
+  CliScheduler(
       bool _implicitAcknowledgements,
       const ExecutorInfo& _executor,
       const string& _role)
@@ -65,20 +48,24 @@ public:
       role(_role),
       tasksLaunched(0),
       tasksFinished(0),
-      totalTasks(100) {}
+      totalTasks(5) {}
 
-  virtual ~TestScheduler() {}
+  virtual ~CliScheduler() {}
 
   virtual void registered(SchedulerDriver*,
                           const FrameworkID&,
                           const MasterInfo&)
   {
-    cout << "Registered!" << endl;
+    cout << "UNIX CLI Scheduler registered!" << endl;
   }
 
-  virtual void reregistered(SchedulerDriver*, const MasterInfo& masterInfo) {}
+  virtual void reregistered(SchedulerDriver*, const MasterInfo& masterInfo) {
+    cout << "Re-registered UNIX CLI invoked..." << endl;
+  }
 
-  virtual void disconnected(SchedulerDriver* driver) {}
+  virtual void disconnected(SchedulerDriver* driver) {
+    cout << "Master has disappeared" << endl;
+  }
 
   virtual void resourceOffers(SchedulerDriver* driver,
                               const vector<Offer>& offers)
@@ -89,18 +76,18 @@ public:
 
       static const Resources TASK_RESOURCES = Resources::parse(
           "cpus:" + stringify(CPUS_PER_TASK) +
-          ";mem:" + stringify(MEM_PER_TASK)  +
-          ";gpus:" + stringify(1)).get();
+          ";mem:" + stringify(MEM_PER_TASK)).get();
 
-      long gpus = getScalarResource(offer, "gpus");
+      Resources remaining = offer.resources();
 
+      // Launch tasks.
       vector<TaskInfo> tasks;
-
-      if (gpus >= GPUS_PER_TASK) {
+      while (tasksLaunched < totalTasks &&
+             remaining.flatten().contains(TASK_RESOURCES)) {
         int taskId = tasksLaunched++;
 
         cout << "Launching task " << taskId << " using offer "
-             << offer.id() << " on host: " << offer.hostname() << endl;
+             << offer.id() << endl;
 
         TaskInfo task;
         task.set_name("Task " + lexical_cast<string>(taskId));
@@ -108,27 +95,14 @@ public:
         task.mutable_slave_id()->MergeFrom(offer.slave_id());
         task.mutable_executor()->MergeFrom(executor);
 
-        Resource* gpu_resource;
-        gpu_resource = task.add_resources();
-        gpu_resource->set_name("gpus");
-        gpu_resource->set_type(Value::SCALAR);
-        gpu_resource->mutable_scalar()->set_value(GPUS_PER_TASK);
+        Option<Resources> resources =
+          remaining.find(TASK_RESOURCES.flatten(role));
 
-        Resource* cpu_resource;
-        cpu_resource = task.add_resources();
-        cpu_resource->set_name("cpus");
-        cpu_resource->set_type(Value::SCALAR);
-        cpu_resource->mutable_scalar()->set_value(CPUS_PER_TASK);
-
-        Resource* mem_resource;
-        mem_resource = task.add_resources();
-        mem_resource->set_name("mem");
-        mem_resource->set_type(Value::SCALAR);
-        mem_resource->mutable_scalar()->set_value(MEM_PER_TASK);
+        CHECK_SOME(resources);
+        task.mutable_resources()->MergeFrom(resources.get());
+        remaining -= resources.get();
 
         tasks.push_back(task);
-      } else {
-        cout << "No gpu resource available, let's wait and try again .. " << endl;
       }
 
       driver->launchTasks(offer.id(), tasks);
@@ -142,7 +116,7 @@ public:
   {
     int taskId = lexical_cast<int>(status.task_id().value());
 
-    cout << "Task " << taskId << " is in state " << status.state() << endl;
+    cout << "Cli Task " << taskId << " is in state " << status.state() << endl;
 
     if (status.state() == TASK_FINISHED) {
       tasksFinished++;
@@ -211,11 +185,11 @@ int main(int argc, char** argv)
   string uri;
   Option<string> value = os::getenv("MESOS_BUILD_DIR");
   if (value.isSome()) {
-    uri = path::join(value.get(), "src", "test-executor");
+    uri = path::join(value.get(), "src", "test-cli-framework");
   } else {
     uri = path::join(
         os::realpath(Path(argv[0]).dirname()).get(),
-        "test-executor");
+        "test-cli-framework");
   }
 
   mesos::internal::logging::Flags flags;
@@ -248,12 +222,12 @@ int main(int argc, char** argv)
   ExecutorInfo executor;
   executor.mutable_executor_id()->set_value("default");
   executor.mutable_command()->set_value(uri);
-  executor.set_name("Test Executor (C++)");
+  executor.set_name("Test Executor (UNIX CLI)");
   executor.set_source("cpp_test");
 
   FrameworkInfo framework;
   framework.set_user(""); // Have Mesos fill in the current user.
-  framework.set_name("Test Framework (C++)");
+  framework.set_name("Test Framework (UNIX CLI)");
   framework.set_role(role);
 
   value = os::getenv("MESOS_CHECKPOINT");
@@ -270,7 +244,7 @@ int main(int argc, char** argv)
   }
 
   MesosSchedulerDriver* driver;
-  TestScheduler scheduler(implicitAcknowledgements, executor, role);
+  CliScheduler scheduler(implicitAcknowledgements, executor, role);
 
   if (os::getenv("MESOS_AUTHENTICATE").isSome()) {
     cout << "Enabling authentication for the framework" << endl;
@@ -299,7 +273,7 @@ int main(int argc, char** argv)
         implicitAcknowledgements,
         credential);
   } else {
-    framework.set_principal("test-framework-cpp");
+    framework.set_principal("test-cli-framework-cpp");
 
     driver = new MesosSchedulerDriver(
         &scheduler,

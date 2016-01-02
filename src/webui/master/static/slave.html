@@ -89,6 +89,15 @@
             <td class="text-right">{{monitor.statistics.cpus_total_usage | number}}</td>
             <td class="text-right">{{state.resources.cpus | number}}</td>
           </tr>
+            <td>GPUs</td>
+            <td class="text-right">{{monitor.statistics.gpus_total_usage | number}}</td>
+            <td class="text-right">{{state.resources.gpus | number}}</td>
+          </tr>
+          <tr>
+            <td>GPUs</td>
+            <td class="text-right">{{monitor.statistics.gpus_total_usage | number}}</td>
+            <td class="text-right">{{state.resources.gpus | number}}</td>
+          </tr>
           <tr>
             <td>Memory</td>
             <td class="text-right">{{monitor.statistics.mem_rss_bytes | dataSize}}</td>
@@ -118,6 +127,7 @@
           <th data-key="name">Name</th>
           <th data-key="num_tasks">Active Tasks</th>
           <th data-key="cpus">CPUs (Used / Allocated)</th>
+          <th data-key="gpus">GPUs (Used / Allocated)</th>
           <th data-key="Mem">Mem (Used / Allocated)</th>
         </tr>
       </thead>
@@ -138,6 +148,7 @@
           <td>{{framework.name}}</td>
           <td>{{framework.num_tasks | number}}</td>
           <td>{{monitor.frameworks[framework.id].statistics.cpus_user_usage + monitor.frameworks[framework.id].statistics.cpus_system_usage | number}} / {{framework.cpus | number}}</td>
+          <td>{{monitor.frameworks[framework.id].statistics.gpus_user_usage + monitor.frameworks[framework.id].statistics.gpus_system_usage | number}} / {{framework.gpus | number}}</td>
           <td>{{monitor.frameworks[framework.id].statistics.mem_rss_bytes | dataSize}} / {{framework.mem * (1024 * 1024) | dataSize}}</td>
         </tr>
       </tbody>
@@ -152,6 +163,7 @@
           <th data-key="name">Name</th>
           <th data-key="tasks.length">Active Tasks</th>
           <th data-key="resources.cpus">CPUs</th>
+          <th data-key="resources.gpus">GPUs</th>
           <th data-key="resources.mem">Mem</th>
         </tr>
       </thead>
@@ -172,6 +184,7 @@
           <td>{{completed_framework.name}}</td>
           <td>{{completed_framework.num_tasks | number}}</td>
           <td>{{completed_framework.cpus | number}}</td>
+          <td>{{completed_framework.gpus | number}}</td>
           <td>{{completed_framework.mem * (1024 * 1024) | dataSize}}</td>
         </tr>
       </tbody>

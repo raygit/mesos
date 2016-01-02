@@ -954,6 +954,7 @@ Try<Resources> Resources::apply(const Offer::Operation& operation) const
 
   CHECK(result.mem() == mem() &&
         result.disk() == disk() &&
+        result.gpus() == gpus() &&
         result.ports() == ports());
 
   // This comparison is an interim fix - see MESOS-3552. We are making it
@@ -1071,7 +1072,6 @@ map<string, Value_Type> Resources::types() const
   return result;
 }
 
-
 Option<double> Resources::cpus() const
 {
   Option<Value::Scalar> value = get<Value::Scalar>("cpus");
@@ -1081,6 +1081,17 @@ Option<double> Resources::cpus() const
     return None();
   }
 }
+
+Option<double> Resources::gpus() const
+{
+  Option<Value::Scalar> value = get<Value::Scalar>("gpus");
+  if (value.isSome()) {
+    return value.get().value();
+  } else {
+    return None();
+  }
+}
+
 
 
 Option<Bytes> Resources::mem() const
